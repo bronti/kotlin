@@ -222,6 +222,8 @@ class SmartCompletion(
 
                 items.addNamedArgumentsWithLiteralValueItems(expectedInfos)
 
+                LambdaSignatureItems.addToCollection(items, expressionWithType, bindingContext, resolutionFacade)
+
                 if (!forBasicCompletion) {
                     LambdaItems.addToCollection(items, expectedInfos)
 
