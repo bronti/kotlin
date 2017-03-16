@@ -20,11 +20,15 @@ import com.google.common.collect.Iterables;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.ArrayUtil;
+import com.intellij.util.LineSeparator;
 import com.intellij.util.Processor;
 import kotlin.Pair;
+import kotlin.collections.CollectionsKt;
 import kotlin.collections.SetsKt;
 import kotlin.io.FilesKt;
+import kotlin.jvm.functions.Function1;
 import kotlin.jvm.functions.Function2;
+import kotlin.text.Charsets;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.analyzer.AnalysisResult;
@@ -52,6 +56,7 @@ import org.jetbrains.kotlin.test.*;
 import org.jetbrains.kotlin.test.util.DescriptorValidator;
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator;
 import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
+import org.jetbrains.kotlin.utils.JsMetadataVersion;
 import org.jetbrains.kotlin.utils.StringsKt;
 import org.jetbrains.org.objectweb.asm.ClassReader;
 import org.jetbrains.org.objectweb.asm.ClassVisitor;
@@ -316,6 +321,28 @@ public class CompileKotlinAgainstCustomBinariesTest extends TestCaseWithTmpdir {
         KotlinTestUtils.assertEqualsToFile(new File(getTestDataDirectory(), "output.txt"), normalizeOutput(output));
     }
 
+    private void doTestKotlinLibraryWithWrongMetadataVersionJs(@NotNull String libraryName, @NotNull String... additionalOptions) {
+        final String oldVersion = "(" + JsMetadataVersion.INSTANCE.toInteger() + ", ";
+        final String newVersion = "(" + new JsMetadataVersion(42, 0, 0).toInteger() + ", ";
+
+        compileLibrary(new K2JSCompiler(), libraryName, new File(tmpdir, "library.js"), Collections.<String>emptyList());
+
+        File library = new File(tmpdir, "library.meta.js");
+        List<String> oldLines = FilesKt.readLines(library, Charsets.UTF_8);
+        List<String> newLines = CollectionsKt.map(oldLines, new Function1<String, String>() {
+            @Override
+            public String invoke(String s) {
+                return s.replace(oldVersion, newVersion);
+            }
+        });
+        FilesKt.writeText(library, StringsKt.join(newLines, LineSeparator.getSystemLineSeparator().getSeparatorString()), Charsets.UTF_8);
+
+        Pair<String, ExitCode> output = compileKotlin(
+                new K2JSCompiler(), "source.kt", new File(tmpdir, "usage.js"), Arrays.asList(additionalOptions), library
+        );
+        KotlinTestUtils.assertEqualsToFile(new File(getTestDataDirectory(), "output.txt"), normalizeOutput(output));
+    }
+
     private void doTestPreReleaseKotlinLibrary(
             @NotNull CLICompiler<?> compiler,
             @NotNull String libraryName,
@@ -492,6 +519,10 @@ public class CompileKotlinAgainstCustomBinariesTest extends TestCaseWithTmpdir {
         doTestKotlinLibraryWithWrongMetadataVersion("library", null);
     }
 
+    public void testWrongMetadataVersionJs() throws Exception {
+        doTestKotlinLibraryWithWrongMetadataVersionJs("library");
+    }
+
     public void testWrongMetadataVersionBadMetadata() throws Exception {
         doTestKotlinLibraryWithWrongMetadataVersion(
                 "library",
@@ -530,6 +561,10 @@ public class CompileKotlinAgainstCustomBinariesTest extends TestCaseWithTmpdir {
 
     public void testWrongMetadataVersionSkipVersionCheck() throws Exception {
         doTestKotlinLibraryWithWrongMetadataVersion("library", null, "-Xskip-metadata-version-check");
+    }
+
+    public void testWrongMetadataVersionJsSkipVersionCheck() throws Exception {
+        doTestKotlinLibraryWithWrongMetadataVersionJs("library", "-Xskip-metadata-version-check");
     }
 
     /*test source mapping generation when source info is absent*/
