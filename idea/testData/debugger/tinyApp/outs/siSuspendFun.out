@@ -1,8 +1,8 @@
-LineBreakpoint created at javaFun.kt:8
+LineBreakpoint created at siSuspendFun.kt:18
 Run Java ~
 Connected to the target VM ~
-javaFun.kt:8
-MyJavaClass.java:8
+siSuspendFun.kt:18
+siSuspendFun.kt:8
 Disconnected from the target VM ~
 
 Process finished with exit code 0

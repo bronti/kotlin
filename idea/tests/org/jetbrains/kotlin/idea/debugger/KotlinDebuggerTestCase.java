@@ -22,6 +22,7 @@ import com.intellij.debugger.impl.DescriptorTestCase;
 import com.intellij.debugger.impl.OutputChecker;
 import com.intellij.execution.ExecutionTestCase;
 import com.intellij.execution.configurations.JavaParameters;
+import com.intellij.idea.IdeaLogger;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModifiableRootModel;
@@ -29,7 +30,11 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.ui.configuration.libraryEditor.NewLibraryEditor;
 import com.intellij.openapi.util.Computable;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.text.StringUtilRt;
+import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.pom.java.LanguageLevel;
@@ -61,6 +66,8 @@ import org.junit.ComparisonFailure;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -81,7 +88,8 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
     private static final File LOCAL_CACHE_LAST_MODIFIED_FILE = new File(LOCAL_CACHE_DIR, "lastModified.txt");
 
     private static File CUSTOM_LIBRARY_JAR;
-    private static final File CUSTOM_LIBRARY_SOURCES = new File(PluginTestCaseBase.getTestDataPathBase() + "/debugger/customLibraryForTinyApp");
+    private static final File CUSTOM_LIBRARY_SOURCES =
+            new File(PluginTestCaseBase.getTestDataPathBase() + "/debugger/customLibraryForTinyApp");
 
     protected static final String KOTLIN_LIBRARY_NAME = "KotlinLibrary";
     private static final String CUSTOM_LIBRARY_NAME = "CustomLibrary";
@@ -176,7 +184,12 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
         }
     }
 
-    private static void configureLibrary(@NotNull ModifiableRootModel model, @NotNull String libraryName, @NotNull File classes, @NotNull File sources) {
+    private static void configureLibrary(
+            @NotNull ModifiableRootModel model,
+            @NotNull String libraryName,
+            @NotNull File classes,
+            @NotNull File sources
+    ) {
         NewLibraryEditor customLibEditor = new NewLibraryEditor();
         customLibEditor.setName(libraryName);
 
@@ -227,13 +240,14 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
             }
 
             CUSTOM_LIBRARY_JAR = MockLibraryUtil.compileLibraryToJar(
-                            CUSTOM_LIBRARY_SOURCES.getPath(), jarDir, "debuggerCustomLibrary", false, false);
+                    CUSTOM_LIBRARY_SOURCES.getPath(), jarDir, "debuggerCustomLibrary", false, false);
 
             String sourcesDir = modulePath + File.separator + "src";
 
             MockLibraryUtil.compileKotlin(sourcesDir, outDir, CUSTOM_LIBRARY_JAR.getPath());
 
-            List<String> options = Arrays.asList("-d", outputDirPath, "-classpath", ForTestCompileRuntime.runtimeJarForTests().getPath(), "-g");
+            List<String> options =
+                    Arrays.asList("-d", outputDirPath, "-classpath", ForTestCompileRuntime.runtimeJarForTests().getPath(), "-g");
             try {
                 KotlinTestUtils.compileJavaFiles(findJavaFiles(new File(sourcesDir)), options);
             }
@@ -278,9 +292,89 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
     }
 
     private static class KotlinOutputChecker extends OutputChecker {
-
         public KotlinOutputChecker(@NotNull String appPath, @NotNull String outputPath) {
             super(appPath, outputPath);
+        }
+
+        @Override
+        public void checkValid(Sdk jdk, boolean sortClassPath) throws Exception {
+            if (IdeaLogger.ourErrorsOccurred != null) {
+                throw IdeaLogger.ourErrorsOccurred;
+            }
+
+            String actual = preprocessBuffer(jdk, buildOutputString(), sortClassPath);
+
+            File outs = new File(myAppPath + File.separator + "outs");
+            assert outs.exists() || outs.mkdirs() : outs;
+
+            File outFile = new File(outs, myTestName + ".out");
+            if (!outFile.exists()) {
+                if (SystemInfo.isWindows) {
+                    final File winOut = new File(outs, myTestName + ".win.out");
+                    if (winOut.exists()) {
+                        outFile = winOut;
+                    }
+                }
+                else if (SystemInfo.isUnix) {
+                    final File unixOut = new File(outs, myTestName + ".unx.out");
+                    if (unixOut.exists()) {
+                        outFile = unixOut;
+                    }
+                }
+            }
+
+            if (!outFile.exists()) {
+                FileUtil.writeToFile(outFile, actual);
+                LOG.error("Test file created " +
+                          outFile.getPath() +
+                          "\n" +
+                          "**************** Don't forget to put it into VCS! *******************");
+            }
+            else {
+                String originalText = FileUtilRt.loadFile(outFile, CharsetToolkit.UTF8);
+                String expected = StringUtilRt.convertLineSeparators(originalText);
+                if (!expected.equals(actual)) {
+                    System.out.println("expected:");
+                    System.out.println(originalText);
+                    System.out.println("actual:");
+                    System.out.println(actual);
+
+                    final int len = Math.min(expected.length(), actual.length());
+                    if (expected.length() != actual.length()) {
+                        System.out.println("Text sizes differ: expected " + expected.length() + " but actual: " + actual.length());
+                    }
+                    if (expected.length() > len) {
+                        System.out.println("Rest from expected text is: \"" + expected.substring(len) + "\"");
+                    }
+                    else if (actual.length() > len) {
+                        System.out.println("Rest from actual text is: \"" + actual.substring(len) + "\"");
+                    }
+
+                    Assert.assertEquals(originalText, actual);
+                }
+            }
+        }
+
+        private String preprocessBuffer(final Sdk testJdk, final String buffer, final boolean sortClassPath) throws Exception {
+            return DebuggerOutputPreprocessorKt.preprocess(buffer);
+        }
+
+        private String buildOutputString() {
+            Method m = null;
+            try {
+                m = OutputChecker.class.getDeclaredMethod("buildOutputString");
+                m.setAccessible(true);//Abracadabra
+                return (String) m.invoke(this); // Now it's OK
+            }
+            catch (NoSuchMethodException e) {
+                throw new RuntimeException(e);
+            }
+            catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+            catch (InvocationTargetException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
@@ -289,7 +383,7 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
             try {
                 return super.replaceAdditionalInOutput(
                         str.replace(ForTestCompileRuntime.runtimeJarForTests().getCanonicalPath(), "!KOTLIN_RUNTIME!")
-                           .replace(CUSTOM_LIBRARY_JAR.getCanonicalPath(), "!CUSTOM_LIBRARY!")
+                                .replace(CUSTOM_LIBRARY_JAR.getCanonicalPath(), "!CUSTOM_LIBRARY!")
                 );
             }
             catch (IOException e) {
@@ -349,6 +443,10 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
 
     @Override
     protected void checkTestOutput() throws Exception {
+        if (KotlinTestUtils.isAllFilesPresentTest(getTestName(false))) {
+            return;
+        }
+
         try {
             super.checkTestOutput();
         }
