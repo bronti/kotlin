@@ -54,7 +54,7 @@ fun findDecompiledDeclaration(
 
     val binaryInfo = referencedDescriptor.module.getCapability(ModuleInfo.Capability) as? BinaryModuleInfo
 
-    val scope = binaryInfo?.contentScope() ?: KotlinSourceFilterScope.libraryClassFiles(EverythingGlobalScope(project), project)
+    val scope = binaryInfo?.binariesScope() ?: KotlinSourceFilterScope.libraryClassFiles(EverythingGlobalScope(project), project)
 
     val decompiledFiles = findDecompiledFilesForDescriptor(project, referencedDescriptor, scope)
 
