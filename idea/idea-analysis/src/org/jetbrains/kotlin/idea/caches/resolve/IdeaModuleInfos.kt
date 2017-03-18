@@ -44,7 +44,7 @@ interface IdeaModuleInfo : ModuleInfo {
     val moduleOrigin: ModuleOrigin
 
     override val capabilities: Map<ModuleDescriptor.Capability<*>, Any?>
-        get() = mapOf(OriginCapability to moduleOrigin)
+        get() = super.capabilities + mapOf(OriginCapability to moduleOrigin)
 
     override fun dependencies(): List<IdeaModuleInfo>
 }
@@ -176,7 +176,7 @@ private class ModuleTestSourceScope(module: Module) : ModuleSourceScope(module) 
     override fun toString() = "ModuleTestSourceScope($module)"
 }
 
-open class LibraryInfo(val project: Project, val library: Library) : IdeaModuleInfo, LibraryModuleInfo {
+class LibraryInfo(val project: Project, val library: Library) : IdeaModuleInfo, LibraryModuleInfo, BinaryModuleInfo {
     override val moduleOrigin: ModuleOrigin
         get() = ModuleOrigin.LIBRARY
 
@@ -201,6 +201,9 @@ open class LibraryInfo(val project: Project, val library: Library) : IdeaModuleI
 
     override fun isJsLibrary(): Boolean = KotlinJavaScriptLibraryDetectionUtil.isKotlinJavaScriptLibrary(library)
 
+    override val sourcesModuleInfo: SourceForBinaryModuleInfo
+        get() = LibrarySourceInfo(project, library)
+
     override fun getLibraryRoots(): Collection<String> =
             library.getFiles(OrderRootType.CLASSES).map(PathUtil::getLocalPath).filterNotNull()
 
@@ -214,7 +217,7 @@ open class LibraryInfo(val project: Project, val library: Library) : IdeaModuleI
     override fun hashCode(): Int = 43 * library.hashCode()
 }
 
-data class LibrarySourceInfo(val project: Project, val library: Library) : IdeaModuleInfo {
+data class LibrarySourceInfo(val project: Project, val library: Library) : IdeaModuleInfo, SourceForBinaryModuleInfo {
     override val moduleOrigin: ModuleOrigin
         get() = ModuleOrigin.OTHER
 
@@ -232,6 +235,9 @@ data class LibrarySourceInfo(val project: Project, val library: Library) : IdeaM
     override fun modulesWhoseInternalsAreVisible(): Collection<ModuleInfo> {
         return listOf(LibraryInfo(project, library))
     }
+
+    override val binariesModuleInfo: BinaryModuleInfo
+        get() = LibraryInfo(project, library)
 
     override fun toString() = "LibrarySourceInfo(libraryName=${library.name})"
 }
@@ -289,4 +295,12 @@ enum class ModuleOrigin {
     MODULE,
     LIBRARY,
     OTHER
+}
+
+interface BinaryModuleInfo : IdeaModuleInfo {
+    val sourcesModuleInfo: SourceForBinaryModuleInfo?
+}
+
+interface SourceForBinaryModuleInfo : IdeaModuleInfo {
+    val binariesModuleInfo: BinaryModuleInfo
 }
