@@ -223,7 +223,9 @@ data class LibrarySourceInfo(val project: Project, val library: Library) : IdeaM
 
     override val name: Name = Name.special("<sources for library ${library.name}>")
 
-    override fun contentScope() = GlobalSearchScope.EMPTY_SCOPE
+    override fun contentScope(): GlobalSearchScope = GlobalSearchScope.EMPTY_SCOPE
+
+    override fun sourceScope(): GlobalSearchScope = LibrarySourceScope(project, library)
 
     override val isLibrary: Boolean
         get() = true
@@ -269,11 +271,25 @@ internal object NotUnderContentRootModuleInfo : IdeaModuleInfo {
 private class LibraryWithoutSourceScope(project: Project, private val library: Library) :
         LibraryScopeBase(project, library.getFiles(OrderRootType.CLASSES), arrayOf<VirtualFile>()) {
 
+    override fun getFileRoot(file: VirtualFile): VirtualFile? = myIndex.getClassRootForFile(file)
+
     override fun equals(other: Any?) = other is LibraryWithoutSourceScope && library == other.library
 
     override fun hashCode() = library.hashCode()
 
     override fun toString() = "LibraryWithoutSourceScope($library)"
+}
+
+private class LibrarySourceScope(project: Project, private val library: Library) :
+        LibraryScopeBase(project, arrayOf<VirtualFile>(), library.getFiles(OrderRootType.SOURCES)) {
+
+    override fun getFileRoot(file: VirtualFile): VirtualFile? = myIndex.getSourceRootForFile(file)
+
+    override fun equals(other: Any?) = other is LibrarySourceScope && library == other.library
+
+    override fun hashCode() = library.hashCode()
+
+    override fun toString() = "LibrarySourceScope($library)"
 }
 
 //TODO: (module refactoring) android sdk has modified scope
@@ -299,8 +315,10 @@ enum class ModuleOrigin {
 
 interface BinaryModuleInfo : IdeaModuleInfo {
     val sourcesModuleInfo: SourceForBinaryModuleInfo?
+    fun binariesScope(): GlobalSearchScope = contentScope()
 }
 
 interface SourceForBinaryModuleInfo : IdeaModuleInfo {
     val binariesModuleInfo: BinaryModuleInfo
+    fun sourceScope(): GlobalSearchScope
 }
