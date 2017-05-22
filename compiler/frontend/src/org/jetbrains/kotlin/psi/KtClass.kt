@@ -46,6 +46,7 @@ open class KtClass : KtClassOrObject {
 
     fun isEnum(): Boolean = hasModifier(KtTokens.ENUM_KEYWORD)
     fun isData(): Boolean = hasModifier(KtTokens.DATA_KEYWORD)
+    fun isProvided(): Boolean = hasModifier(KtTokens.PROVIDED_KEYWORD)
     fun isSealed(): Boolean = hasModifier(KtTokens.SEALED_KEYWORD)
     fun isInner(): Boolean = hasModifier(KtTokens.INNER_KEYWORD)
 

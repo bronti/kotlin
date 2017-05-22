@@ -84,6 +84,7 @@ public class LazyClassDescriptor extends ClassDescriptorBase implements ClassDes
     private final ClassKind kind;
     private final boolean isInner;
     private final boolean isData;
+    private final boolean isProvided;
     private final boolean isHeader;
     private final boolean isImpl;
 
@@ -159,6 +160,7 @@ public class LazyClassDescriptor extends ClassDescriptorBase implements ClassDes
 
         this.isInner = isInnerClass(modifierList) && !ModifiersChecker.isIllegalInner(this);
         this.isData = modifierList != null && modifierList.hasModifier(KtTokens.DATA_KEYWORD);
+        this.isProvided = modifierList != null && modifierList.hasModifier(KtTokens.PROVIDED_KEYWORD);
         this.isHeader = modifierList != null && modifierList.hasModifier(KtTokens.HEADER_KEYWORD);
         this.isImpl = modifierList != null && modifierList.hasModifier(KtTokens.IMPL_KEYWORD);
 
@@ -472,6 +474,11 @@ public class LazyClassDescriptor extends ClassDescriptorBase implements ClassDes
     @Override
     public boolean isData() {
         return isData;
+    }
+
+    @Override
+    public boolean isProvided() {
+        return isProvided;
     }
 
     @Override

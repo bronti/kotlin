@@ -142,6 +142,7 @@ open class KnownClassDescriptor(
 
     override fun isCompanionObject(): Boolean = false
     override fun isData(): Boolean = false
+    override fun isProvided(): Boolean = false
     override fun isInner(): Boolean = false
     override fun isHeader(): Boolean = false
     override fun isImpl(): Boolean = false

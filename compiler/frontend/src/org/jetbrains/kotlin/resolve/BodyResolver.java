@@ -401,7 +401,7 @@ public class BodyResolver {
     }
 
     private void checkRedeclarationsInClassHeaderWithoutPrimaryConstructor(
-            @NotNull final ClassDescriptor descriptor, @NotNull LexicalScope scopeForConstructorResolution
+            @NotNull ClassDescriptor descriptor, @NotNull LexicalScope scopeForConstructorResolution
     ) {
         // Initializing a scope will report errors if any.
         new LexicalScopeImpl(
@@ -537,6 +537,10 @@ public class BodyResolver {
                     else if (ktClassOrObject.hasModifier(KtTokens.DATA_KEYWORD) &&
                              !languageVersionSettings.supportsFeature(LanguageFeature.DataClassInheritance)) {
                         trace.report(DATA_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES.on(typeReference));
+                        addSupertype = false;
+                    }
+                    else if (ktClassOrObject.hasModifier(KtTokens.PROVIDED_KEYWORD)) {
+                        trace.report(PROVIDED_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES.on(typeReference));
                         addSupertype = false;
                     }
                     else if (DescriptorUtils.isSubclass(classDescriptor, builtIns.getThrowable()) &&

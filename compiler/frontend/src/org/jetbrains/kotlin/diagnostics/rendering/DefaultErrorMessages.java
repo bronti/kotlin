@@ -536,6 +536,7 @@ public class DefaultErrorMessages {
         MAP.put(SUPERTYPE_APPEARS_TWICE, "A supertype appears twice");
         MAP.put(FINAL_SUPERTYPE, "This type is final, so it cannot be inherited from");
         MAP.put(DATA_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES, "Data class inheritance from other classes is forbidden");
+        MAP.put(PROVIDED_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES, "Provided class inheritance from other classes is forbidden");
         MAP.put(SEALED_SUPERTYPE, "This type is sealed, so it can be inherited by only its own nested classes or objects");
         MAP.put(SEALED_SUPERTYPE_IN_LOCAL_CLASS, "Local class cannot extend a sealed class");
         MAP.put(SINGLETON_IN_SUPERTYPE, "Cannot inherit from a singleton");

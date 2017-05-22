@@ -267,6 +267,7 @@ public interface Errors {
 
     DiagnosticFactory0<KtTypeReference> FINAL_SUPERTYPE = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<KtTypeReference> DATA_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES = DiagnosticFactory0.create(ERROR);
+    DiagnosticFactory0<KtTypeReference> PROVIDED_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<KtTypeReference> SINGLETON_IN_SUPERTYPE = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<KtNullableType> NULLABLE_SUPERTYPE = DiagnosticFactory0.create(ERROR, NULLABLE_TYPE);
     DiagnosticFactory0<KtTypeReference> DYNAMIC_SUPERTYPE = DiagnosticFactory0.create(ERROR);

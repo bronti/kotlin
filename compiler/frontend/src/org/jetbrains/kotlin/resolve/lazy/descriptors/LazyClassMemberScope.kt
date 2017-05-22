@@ -82,6 +82,7 @@ open class LazyClassMemberScope(
         }
 
         addDataClassMethods(result, location)
+        addProvidedClassMethods(result, location)
         addSyntheticCompanionObject(result, location)
 
         result.trimToSize()
@@ -142,8 +143,19 @@ open class LazyClassMemberScope(
         }
         result.addAll(generateDelegatingDescriptors(name, EXTRACT_FUNCTIONS, result))
         generateDataClassMethods(result, name, location, fromSupertypes)
+        generateProvidedClassMethods(result, name)
         c.syntheticResolveExtension.generateSyntheticMethods(thisDescriptor, name, fromSupertypes, result)
         generateFakeOverrides(name, fromSupertypes, result, SimpleFunctionDescriptor::class.java)
+    }
+
+    private fun generateProvidedClassMethods(
+            result: MutableCollection<SimpleFunctionDescriptor>,
+            name: Name
+    ) {
+        if (!thisDescriptor.isProvided) return
+        if (name == ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME) {
+            result.add(ProvidedClassDescriptionResolver.createGetOneFunctionDescriptor(thisDescriptor, trace))
+        }
     }
 
     private fun generateDataClassMethods(
@@ -316,6 +328,12 @@ open class LazyClassMemberScope(
             n++
         }
         result.addAll(getContributedFunctions(Name.identifier("copy"), location))
+    }
+
+    private fun addProvidedClassMethods(result: MutableCollection<DeclarationDescriptor>, location: LookupLocation) {
+        if (!thisDescriptor.isProvided) return
+
+        result.addAll(getContributedFunctions(ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME, location))
     }
 
     private val secondaryConstructors: NotNullLazyValue<Collection<ClassConstructorDescriptor>>

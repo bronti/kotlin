@@ -139,4 +139,4 @@ private val MODIFIERS_ORDER = listOf(PUBLIC_KEYWORD, PROTECTED_KEYWORD, PRIVATE_
                                      LATEINIT_KEYWORD,
                                      SUSPEND_KEYWORD,
                                      INNER_KEYWORD,
-                                     ENUM_KEYWORD, COMPANION_KEYWORD, INFIX_KEYWORD, OPERATOR_KEYWORD, DATA_KEYWORD)
+                                     ENUM_KEYWORD, COMPANION_KEYWORD, INFIX_KEYWORD, OPERATOR_KEYWORD, DATA_KEYWORD, PROVIDED_KEYWORD)

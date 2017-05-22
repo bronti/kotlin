@@ -251,7 +251,7 @@ object ExcludedTypeAnnotations {
 
 enum class RenderingFormat {
     PLAIN {
-        override fun escape(string: String) = string;
+        override fun escape(string: String) = string
     },
     HTML {
         override fun escape(string: String) = string.replace("<", "&lt;").replace(">", "&gt;")
@@ -280,6 +280,7 @@ enum class DescriptorRendererModifier(val includeByDefault: Boolean) {
     INNER(true),
     MEMBER_KIND(true),
     DATA(true),
+    PROVIDED(true),
     HEADER(true),
     IMPL(true),
     ;

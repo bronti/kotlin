@@ -76,8 +76,9 @@ object ModifierCheckerCore {
             REIFIED_KEYWORD   to EnumSet.of(TYPE_PARAMETER),
             VARARG_KEYWORD    to EnumSet.of(VALUE_PARAMETER, PROPERTY_PARAMETER),
             COMPANION_KEYWORD to EnumSet.of(OBJECT),
-            LATEINIT_KEYWORD to EnumSet.of(MEMBER_PROPERTY),
+            LATEINIT_KEYWORD  to EnumSet.of(MEMBER_PROPERTY),
             DATA_KEYWORD      to EnumSet.of(CLASS_ONLY, LOCAL_CLASS),
+            PROVIDED_KEYWORD  to EnumSet.of(CLASS_ONLY, LOCAL_CLASS),
             INLINE_KEYWORD    to EnumSet.of(FUNCTION, PROPERTY, PROPERTY_GETTER, PROPERTY_SETTER),
             NOINLINE_KEYWORD  to EnumSet.of(VALUE_PARAMETER),
             TAILREC_KEYWORD   to EnumSet.of(FUNCTION),
@@ -143,6 +144,12 @@ object ModifierCheckerCore {
         result += incompatibilityRegister(DATA_KEYWORD, INNER_KEYWORD)
         result += incompatibilityRegister(DATA_KEYWORD, ABSTRACT_KEYWORD)
         result += incompatibilityRegister(DATA_KEYWORD, SEALED_KEYWORD)
+        // provided + open, provided + inner, provided + abstract, provided + sealed, provided + data
+        result += incompatibilityRegister(PROVIDED_KEYWORD, OPEN_KEYWORD)
+        result += incompatibilityRegister(PROVIDED_KEYWORD, INNER_KEYWORD)
+        result += incompatibilityRegister(PROVIDED_KEYWORD, ABSTRACT_KEYWORD)
+        result += incompatibilityRegister(PROVIDED_KEYWORD, SEALED_KEYWORD)
+        result += incompatibilityRegister(PROVIDED_KEYWORD, DATA_KEYWORD)
         // open is redundant to abstract & override
         result += redundantRegister(ABSTRACT_KEYWORD, OPEN_KEYWORD)
         // abstract is redundant to sealed

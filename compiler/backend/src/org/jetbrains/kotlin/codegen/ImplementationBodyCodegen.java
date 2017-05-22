@@ -26,6 +26,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.backend.common.CodegenUtil;
 import org.jetbrains.kotlin.backend.common.DataClassMethodGenerator;
+import org.jetbrains.kotlin.backend.common.ProvidedClassPropertyGenerator;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding;
 import org.jetbrains.kotlin.codegen.binding.MutableClosure;
@@ -358,6 +359,8 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         generateFunctionsForDataClasses();
 
+        generatePropertiesForProvidedClasses();
+
         new CollectionStubMethodGenerator(typeMapper, descriptor).generate(functionCodegen, v);
 
         generateToArray();
@@ -462,6 +465,35 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
             Method method = typeMapper.mapAsmMethod(propertyDescriptor.getGetter());
             iv.invokevirtual(classAsmType.getInternalName(), method.getName(), method.getDescriptor(), false);
             return method.getReturnType();
+        }
+    }
+
+    private void generatePropertiesForProvidedClasses() {
+        if (!descriptor.isProvided()) return;
+        if (!(myClass instanceof KtClassOrObject)) return;
+        new ProvidedClassPropertyGeneratorImpl((KtClassOrObject)myClass, bindingContext).generate();
+    }
+
+    private class ProvidedClassPropertyGeneratorImpl extends ProvidedClassPropertyGenerator {
+        ProvidedClassPropertyGeneratorImpl(
+                KtClassOrObject klass,
+                BindingContext bindingContext
+        ) {
+            super(klass, bindingContext);
+        }
+
+        @Override
+        protected void generateGetterFunction(@NotNull FunctionDescriptor function) {
+            MethodContext context = ImplementationBodyCodegen.this.context.intoFunction(function);
+            MethodVisitor mv = v.newMethod(JvmDeclarationOriginKt.OtherOrigin(function), ACC_PUBLIC, function.getName().asString(), "()I;", null, null);
+            InstructionAdapter iv = new InstructionAdapter(mv);
+
+            mv.visitCode();
+
+            iv.aconst(1);
+            iv.areturn(Type.INT_TYPE);
+
+            FunctionCodegen.endVisit(mv, function.getName().asString(), myClass);
         }
     }
 
