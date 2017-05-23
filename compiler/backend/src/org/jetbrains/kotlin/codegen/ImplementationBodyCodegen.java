@@ -485,7 +485,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         @Override
         protected void generateGetterFunction(@NotNull FunctionDescriptor function) {
             MethodContext context = ImplementationBodyCodegen.this.context.intoFunction(function);
-            MethodVisitor mv = v.newMethod(JvmDeclarationOriginKt.OtherOrigin(function), ACC_PUBLIC, function.getName().asString(), "()I;", null, null);
+            MethodVisitor mv = v.newMethod(JvmDeclarationOriginKt.OtherOrigin(function), ACC_PUBLIC, function.getName().asString(), "()I", null, null);
             InstructionAdapter iv = new InstructionAdapter(mv);
 
             mv.visitCode();

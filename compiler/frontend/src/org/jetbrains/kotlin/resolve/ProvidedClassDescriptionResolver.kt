@@ -50,7 +50,7 @@ object ProvidedClassDescriptionResolver {
                 Visibilities.PUBLIC
         )
 
-        trace.record(BindingContext.PROVIDED_CLASS_COPY_FUNCTION, classDescriptor, functionDescriptor)
+        trace.record(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor, functionDescriptor)
         return functionDescriptor
     }
 }

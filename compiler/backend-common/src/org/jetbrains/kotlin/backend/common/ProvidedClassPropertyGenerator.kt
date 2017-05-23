@@ -39,7 +39,7 @@ abstract class ProvidedClassPropertyGenerator(private val declaration: KtClassOr
     protected abstract fun generateGetterFunction(function: FunctionDescriptor)
 
     private fun generateGetter() {
-        val function = CodegenUtil.getMemberToGenerate(classDescriptor, ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME.identifier, KotlinBuiltIns::isString, List<ValueParameterDescriptor>::isEmpty) ?: return
+        val function = bindingContext.get(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor) ?: return
         generateGetterFunction(function)
     }
 

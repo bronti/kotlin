@@ -252,7 +252,7 @@ public interface BindingContext {
 
     WritableSlice<ValueParameterDescriptor, FunctionDescriptor> DATA_CLASS_COMPONENT_FUNCTION = Slices.createSimpleSlice();
     WritableSlice<ClassDescriptor, FunctionDescriptor> DATA_CLASS_COPY_FUNCTION = Slices.createSimpleSlice();
-    WritableSlice<ClassDescriptor, FunctionDescriptor> PROVIDED_CLASS_COPY_FUNCTION = Slices.createSimpleSlice();
+    WritableSlice<ClassDescriptor, FunctionDescriptor> PROVIDED_CLASS_GET_ONE_FUNCTION = Slices.createSimpleSlice();
 
     WritableSlice<FqNameUnsafe, ClassDescriptor> FQNAME_TO_CLASS_DESCRIPTOR = new BasicWritableSlice<>(DO_NOTHING, true);
     WritableSlice<KtFile, PackageFragmentDescriptor> FILE_TO_PACKAGE_FRAGMENT = Slices.createSimpleSlice();
