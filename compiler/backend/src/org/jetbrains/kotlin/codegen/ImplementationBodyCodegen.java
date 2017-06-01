@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.codegen;
 
 import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.util.Pair;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ArrayUtil;
 import kotlin.Unit;
@@ -26,7 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.backend.common.CodegenUtil;
 import org.jetbrains.kotlin.backend.common.DataClassMethodGenerator;
-import org.jetbrains.kotlin.backend.common.ProvidedClassPropertyGenerator;
+import org.jetbrains.kotlin.backend.common.ProvidedClassPropertyAndMethodGenerator;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding;
 import org.jetbrains.kotlin.codegen.binding.MutableClosure;
@@ -45,10 +46,7 @@ import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.*;
-import org.jetbrains.kotlin.resolve.BindingContext;
-import org.jetbrains.kotlin.resolve.DelegationResolver;
-import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
-import org.jetbrains.kotlin.resolve.DescriptorUtils;
+import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.*;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
@@ -77,6 +75,7 @@ import static org.jetbrains.kotlin.codegen.CodegenUtilKt.isGenericToArray;
 import static org.jetbrains.kotlin.codegen.CodegenUtilKt.isNonGenericToArray;
 import static org.jetbrains.kotlin.codegen.JvmCodegenUtil.*;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.enumEntryNeedSubclass;
+import static org.jetbrains.kotlin.codegen.serialization.JvmSerializationBindings.FIELD_FOR_PROPERTY;
 import static org.jetbrains.kotlin.resolve.BindingContextUtils.getDelegationConstructorCall;
 import static org.jetbrains.kotlin.resolve.BindingContextUtils.getNotNull;
 import static org.jetbrains.kotlin.resolve.DescriptorToSourceUtils.descriptorToDeclaration;
@@ -359,7 +358,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         generateFunctionsForDataClasses();
 
-        generatePropertiesForProvidedClasses();
+        generatePropertiesAndMethodsForProvidedClasses();
 
         new CollectionStubMethodGenerator(typeMapper, descriptor).generate(functionCodegen, v);
 
@@ -468,14 +467,14 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         }
     }
 
-    private void generatePropertiesForProvidedClasses() {
+    private void generatePropertiesAndMethodsForProvidedClasses() {
         if (!descriptor.isProvided()) return;
         if (!(myClass instanceof KtClassOrObject)) return;
-        new ProvidedClassPropertyGeneratorImpl((KtClassOrObject)myClass, bindingContext).generate();
+        new ProvidedClassPropertyAndMethodGeneratorImpl((KtClassOrObject)myClass, bindingContext).generate();
     }
 
-    private class ProvidedClassPropertyGeneratorImpl extends ProvidedClassPropertyGenerator {
-        ProvidedClassPropertyGeneratorImpl(
+    private class ProvidedClassPropertyAndMethodGeneratorImpl extends ProvidedClassPropertyAndMethodGenerator {
+        ProvidedClassPropertyAndMethodGeneratorImpl(
                 KtClassOrObject klass,
                 BindingContext bindingContext
         ) {
@@ -483,7 +482,44 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         }
 
         @Override
-        protected void generateGetterFunction(@NotNull FunctionDescriptor function) {
+        protected void generateProperty(@NotNull PropertyDescriptor property, Name propertyName) {
+            generateBackingField(property, propertyName);
+
+            @NotNull PropertyGetterDescriptor getter = property.getGetter();
+
+            FunctionGenerationStrategy strategy = new GetterStrategyForProvidedProperty(state, getter);
+            JvmDeclarationOrigin origin = JvmDeclarationOriginKt.Synthetic(null, getter);
+            functionCodegen.generateMethod(origin, getter, strategy);
+        }
+
+        private void generateBackingField(@NotNull PropertyDescriptor property, Name propertyName) {
+            Object defaultValue = null;
+
+            //ConstantValue<?> initializer = property.getCompileTimeInitializer();
+            //if (initializer != null) {
+            //    value = initializer.getValue();
+            //}
+
+            KotlinType kotlinType = property.getType();
+            Type type = typeMapper.mapType(kotlinType);
+
+            String name = propertyName.asString();
+
+            //int modifiers = getDeprecatedAccessFlag(property)
+            int modifiers = ACC_FINAL | ACC_PRIVATE | ACC_SYNTHETIC;
+
+            ClassBuilder builder = v;
+
+            // ????
+            builder.getSerializationBindings().put(FIELD_FOR_PROPERTY, property, Pair.create(type, name));
+
+            //FieldVisitor fv =
+            builder.newField(JvmDeclarationOriginKt.Synthetic(null, property), modifiers, name, type.getDescriptor(),
+                             typeMapper.mapFieldSignature(kotlinType, property), defaultValue);
+        }
+
+        @Override
+        protected void generateFunction(@NotNull FunctionDescriptor function) {
             MethodContext context = ImplementationBodyCodegen.this.context.intoFunction(function);
             MethodVisitor mv = v.newMethod(JvmDeclarationOriginKt.OtherOrigin(function), ACC_PUBLIC, function.getName().asString(), "()I", null, null);
             InstructionAdapter iv = new InstructionAdapter(mv);
@@ -496,6 +532,32 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
             FunctionCodegen.endVisit(mv, function.getName().asString(), myClass);
         }
     }
+
+    private static class GetterStrategyForProvidedProperty extends FunctionGenerationStrategy.CodegenBased {
+        private final PropertyAccessorDescriptor propertyGetterDescriptor;
+
+        public GetterStrategyForProvidedProperty(@NotNull GenerationState state, @NotNull PropertyAccessorDescriptor descriptor) {
+            super(state);
+            propertyGetterDescriptor = descriptor;
+        }
+
+        @Override
+        public void doGenerateBody(@NotNull ExpressionCodegen codegen, @NotNull JvmMethodSignature signature) {
+            InstructionAdapter v = codegen.v;
+            PropertyDescriptor propertyDescriptor = propertyGetterDescriptor.getCorrespondingProperty();
+            StackValue property = codegen.intermediateValueForProperty(propertyDescriptor, true, null, StackValue.LOCAL_0);
+
+            if (propertyGetterDescriptor instanceof PropertyGetterDescriptor) {
+                Type type = signature.getReturnType();
+                property.put(type, v);
+                v.areturn(type);
+            }
+            else {
+                throw new IllegalStateException("Unknown property accessor: " + propertyGetterDescriptor);
+            }
+        }
+    }
+
 
     private void generateFunctionsForDataClasses() {
         if (!descriptor.isData()) return;

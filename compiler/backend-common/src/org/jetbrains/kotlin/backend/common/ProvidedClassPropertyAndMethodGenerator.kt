@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.backend.common
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtParameter
@@ -29,18 +30,27 @@ import org.jetbrains.kotlin.resolve.ProvidedClassDescriptionResolver
 /**
  * Logic for generatind provided class.
  */
-abstract class ProvidedClassPropertyGenerator(private val declaration: KtClassOrObject, private val bindingContext: BindingContext) {
+abstract class ProvidedClassPropertyAndMethodGenerator(private val declaration: KtClassOrObject, private val bindingContext: BindingContext) {
     protected val classDescriptor: ClassDescriptor = BindingContextUtils.getNotNull(bindingContext, BindingContext.CLASS, declaration)
 
     fun generate() {
-        generateGetter()
+        doGenerateFunction()
+        doGenerateProperty()
     }
 
-    protected abstract fun generateGetterFunction(function: FunctionDescriptor)
+    protected abstract fun generateFunction(function: FunctionDescriptor)
 
-    private fun generateGetter() {
+    protected abstract fun generateProperty(property: PropertyDescriptor, name: Name)
+
+    private fun doGenerateFunction() {
         val function = bindingContext.get(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor) ?: return
-        generateGetterFunction(function)
+        generateFunction(function)
+    }
+
+
+    private fun doGenerateProperty() {
+        val property = bindingContext.get(BindingContext.PROVIDED_CLASS_VARIABLE_PROPERTY, classDescriptor) ?: return
+        generateProperty(property, ProvidedClassDescriptionResolver.VARIABLE_PROPERTY_NAME)
     }
 
 }

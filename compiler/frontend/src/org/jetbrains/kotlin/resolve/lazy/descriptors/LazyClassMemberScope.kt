@@ -16,12 +16,16 @@
 
 package org.jetbrains.kotlin.resolve.lazy.descriptors
 
+import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
-import org.jetbrains.kotlin.descriptors.impl.ClassConstructorDescriptorImpl
+import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.descriptors.annotations.CompositeAnnotations
+import org.jetbrains.kotlin.descriptors.impl.*
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.reportOnDeclarationAs
@@ -35,6 +39,7 @@ import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.resolve.*
+import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.lazy.LazyClassContext
 import org.jetbrains.kotlin.resolve.lazy.declarations.ClassMemberDeclarationProvider
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
@@ -158,6 +163,16 @@ open class LazyClassMemberScope(
         }
     }
 
+    private fun generateProvidedClassProperties(
+            result: MutableSet<PropertyDescriptor>,
+            name: Name
+    ) {
+        if (!thisDescriptor.isProvided) return
+        if (name == ProvidedClassDescriptionResolver.VARIABLE_PROPERTY_NAME) {
+            result.add(ProvidedClassDescriptionResolver.createVariablePropertyDescriptor(thisDescriptor, trace))
+        }
+    }
+
     private fun generateDataClassMethods(
             result: MutableCollection<SimpleFunctionDescriptor>,
             name: Name,
@@ -268,6 +283,8 @@ open class LazyClassMemberScope(
         result.addAll(generateDelegatingDescriptors(name, EXTRACT_PROPERTIES, result))
         c.syntheticResolveExtension.generateSyntheticProperties(thisDescriptor, name, fromSupertypes, result)
         generateFakeOverrides(name, fromSupertypes, result, PropertyDescriptor::class.java)
+
+        generateProvidedClassProperties(result, name)
     }
 
     protected open fun createPropertiesFromPrimaryConstructorParameters(name: Name, result: MutableSet<PropertyDescriptor>) {
@@ -334,6 +351,8 @@ open class LazyClassMemberScope(
         if (!thisDescriptor.isProvided) return
 
         result.addAll(getContributedFunctions(ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME, location))
+
+        result.addAll(getContributedVariables(Name.identifier("variable"), location))
     }
 
     private val secondaryConstructors: NotNullLazyValue<Collection<ClassConstructorDescriptor>>
