@@ -223,6 +223,11 @@
         <!-- Guava 19 sources-->
         <get-maven-library prefix="com/google/guava" lib="guava" version="19.0" bin="false"/>
 
+        <!-- Jackson -->
+        <get-maven-library prefix="com/fasterxml/jackson/core" lib="jackson-core" version="2.9.0.pr3" target.jar.name.base="jackson-core"/>
+        <get-maven-library prefix="com/fasterxml/jackson/core" lib="jackson-databind" version="2.9.0.pr3" target.jar.name.base="jackson-databind"/>
+        <get-maven-library prefix="com/fasterxml/jackson/core" lib="jackson-annotations" version="2.9.0.pr3" target.jar.name.base="jackson-annotations"/>
+
         <!-- ASM -->
         <get src="https://raw.github.com/JetBrains/intellij-community/171/lib/src/asm-src.zip"
              dest="${dependencies}/asm-src.zip"/>

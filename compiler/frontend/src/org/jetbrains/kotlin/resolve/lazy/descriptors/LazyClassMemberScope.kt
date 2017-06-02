@@ -16,15 +16,18 @@
 
 package org.jetbrains.kotlin.resolve.lazy.descriptors
 
-import com.intellij.psi.PsiElement
+import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.config.LanguageFeature
+import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
+import org.jetbrains.kotlin.descriptors.annotations.AnnotationSplitter
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
-import org.jetbrains.kotlin.descriptors.annotations.CompositeAnnotations
 import org.jetbrains.kotlin.descriptors.impl.*
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.diagnostics.Errors
@@ -33,22 +36,26 @@ import org.jetbrains.kotlin.diagnostics.reportOnDeclarationOrFail
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.incremental.record
+import org.jetbrains.kotlin.lexer.KtTokens.PUBLIC_KEYWORD
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.KtClassOrObject
-import org.jetbrains.kotlin.psi.KtDeclaration
-import org.jetbrains.kotlin.psi.KtProperty
-import org.jetbrains.kotlin.psi.KtTypeReference
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.*
+import org.jetbrains.kotlin.resolve.calls.results.TypeSpecificityComparator
+import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfoFactory
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.lazy.LazyClassContext
 import org.jetbrains.kotlin.resolve.lazy.declarations.ClassMemberDeclarationProvider
-import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
-import org.jetbrains.kotlin.resolve.scopes.LexicalScope
-import org.jetbrains.kotlin.resolve.scopes.MemberScope
+import org.jetbrains.kotlin.resolve.scopes.*
+import org.jetbrains.kotlin.resolve.scopes.receivers.TransientReceiver
+import org.jetbrains.kotlin.resolve.source.toSourceElement
 import org.jetbrains.kotlin.storage.NotNullLazyValue
 import org.jetbrains.kotlin.storage.NullableLazyValue
-import org.jetbrains.kotlin.types.DeferredType
+import org.jetbrains.kotlin.types.ErrorUtils
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.TypeUtils
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
+import org.jetbrains.kotlin.types.expressions.ExpressionTypingContext
+import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils
 import java.util.*
 
 open class LazyClassMemberScope(
@@ -64,6 +71,13 @@ open class LazyClassMemberScope(
     private val extraDescriptors: NotNullLazyValue<Collection<DeclarationDescriptor>> = storageManager.createLazyValue {
         computeExtraDescriptors(NoLookupLocation.FOR_ALREADY_TRACKED)
     }
+    private val jsonNodeForProvided: NotNullLazyValue<JsonNode> = storageManager.createLazyValue {
+        computeModelForProvidedMap(NoLookupLocation.FOR_ALREADY_TRACKED)
+    }
+
+    fun getJsonNodeForProvided() = jsonNodeForProvided.invoke()
+
+    //todo: store jsons for provided
 
     override fun getContributedDescriptors(kindFilter: DescriptorKindFilter,
                                            nameFilter: (Name) -> Boolean): Collection<DeclarationDescriptor> {
@@ -87,7 +101,8 @@ open class LazyClassMemberScope(
         }
 
         addDataClassMethods(result, location)
-        addProvidedClassMethods(result, location)
+        addProvidedClassMethodsAndProperties(result, location)
+
         addSyntheticCompanionObject(result, location)
 
         result.trimToSize()
@@ -158,19 +173,17 @@ open class LazyClassMemberScope(
             name: Name
     ) {
         if (!thisDescriptor.isProvided) return
-        if (name == ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME) {
-            result.add(ProvidedClassDescriptionResolver.createGetOneFunctionDescriptor(thisDescriptor, trace))
-        }
+//        if (name == ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME) {
+//            result.add(ProvidedClassDescriptionResolver.createGetOneFunctionDescriptor(thisDescriptor, trace))
+//        }
     }
 
-    private fun generateProvidedClassProperties(
+    private fun generateProvidedFromJsonPropertyClass(
             result: MutableSet<PropertyDescriptor>,
             name: Name
     ) {
         if (!thisDescriptor.isProvided) return
-        if (name == ProvidedClassDescriptionResolver.VARIABLE_PROPERTY_NAME) {
-            result.add(ProvidedClassDescriptionResolver.createVariablePropertyDescriptor(thisDescriptor, trace))
-        }
+        result.add(ProvidedClassDescriptionResolver.createFromJsonPropertyDescriptor(name, getProvidedValue(name), thisDescriptor, trace))
     }
 
     private fun generateDataClassMethods(
@@ -284,7 +297,7 @@ open class LazyClassMemberScope(
         c.syntheticResolveExtension.generateSyntheticProperties(thisDescriptor, name, fromSupertypes, result)
         generateFakeOverrides(name, fromSupertypes, result, PropertyDescriptor::class.java)
 
-        generateProvidedClassProperties(result, name)
+        generateProvidedFromJsonPropertyClass(result, name)
     }
 
     protected open fun createPropertiesFromPrimaryConstructorParameters(name: Name, result: MutableSet<PropertyDescriptor>) {
@@ -347,12 +360,45 @@ open class LazyClassMemberScope(
         result.addAll(getContributedFunctions(Name.identifier("copy"), location))
     }
 
-    private fun addProvidedClassMethods(result: MutableCollection<DeclarationDescriptor>, location: LookupLocation) {
+    private fun computeModelForProvidedMap(location: LookupLocation): JsonNode {
+
+
+        val modelName = Name.identifier("model")
+
+        // todo: error report companion not found
+        val companionObjectDescriptor = thisDescriptor.companionObjectDescriptor as ClassDescriptor
+        val companionObjectProperties = companionObjectDescriptor.unsubstitutedMemberScope.getContributedVariables(modelName, location)
+        if (companionObjectProperties.size != 1) {
+            // todo: report error
+            throw AssertionError("TODO: report error (multiple or none model fields found)")
+        }
+        val modelPropertyInitializer = companionObjectProperties.iterator().next().compileTimeInitializer
+        val model = if (modelPropertyInitializer != null && modelPropertyInitializer.value is String) {
+            modelPropertyInitializer.value as String
+        }
+        else {
+            throw AssertionError("TODO: report error (incorrect or none model field value)")
+        }
+
+        val mapper = ObjectMapper(JsonFactory())
+        val rootNode = mapper.readTree(model)
+
+        return rootNode
+    }
+
+    private fun getProvidedValue(name: Name): JsonNode {
+        return getJsonNodeForProvided()[name.identifier]
+    }
+
+    private fun addProvidedClassMethodsAndProperties(result: MutableCollection<DeclarationDescriptor>, location: LookupLocation) {
+        // todo: extract to class
+
         if (!thisDescriptor.isProvided) return
 
-        result.addAll(getContributedFunctions(ProvidedClassDescriptionResolver.GET_ONE_METHOD_NAME, location))
-
-        result.addAll(getContributedVariables(Name.identifier("variable"), location))
+        for (field in getJsonNodeForProvided().fields()) {
+//            if (field.value.getClass() == JsonNode.class) continue
+            result.addAll(getContributedVariables(Name.identifier(field.key), location))
+        }
     }
 
     private val secondaryConstructors: NotNullLazyValue<Collection<ClassConstructorDescriptor>>
@@ -391,16 +437,70 @@ open class LazyClassMemberScope(
         return constructor
     }
 
+    private fun resolveConstructorForProvided(): ClassConstructorDescriptor {
+        val scope = thisDescriptor.scopeForConstructorHeaderResolution
+
+
+        val constructorDescriptor = ClassConstructorDescriptorImpl.createSynthesized(
+                thisDescriptor,
+                Annotations.EMPTY,
+                false,
+                thisDescriptor.source)
+        //todo: source?
+
+        val parameterScope = LexicalWritableScope(
+                scope,
+                constructorDescriptor,
+                false,
+                TraceBasedLocalRedeclarationChecker(trace, OverloadChecker(TypeSpecificityComparator.NONE)),
+                LexicalScopeKind.CONSTRUCTOR_HEADER
+        )
+        val valueParameters = ArrayList<ValueParameterDescriptor>()
+
+        val valueType = thisDescriptor.builtIns.stringType
+        val parameterName = Name.identifier("json")
+
+        val valueParameterDescriptor = ValueParameterDescriptorImpl.createWithDestructuringDeclarations(
+                constructorDescriptor,
+                null,
+                0,
+                Annotations.EMPTY,
+                parameterName,
+                valueType,
+                false,
+                false,
+                false,
+                null,
+                thisDescriptor.source,
+                null)
+
+        trace.record(BindingContext.PROVIDED_CLASS_JSON_VARIABLE, thisDescriptor, valueParameterDescriptor)
+
+        ExpressionTypingUtils.checkVariableShadowing(parameterScope, trace, valueParameterDescriptor)
+        parameterScope.addVariableDescriptor(valueParameterDescriptor)
+        valueParameters.add(valueParameterDescriptor)
+
+        val constructor = constructorDescriptor.initialize(valueParameters, Visibilities.PUBLIC)
+        constructor.returnType = thisDescriptor.defaultType
+        setDeferredReturnType(constructor)
+        return constructor
+    }
+
     private fun resolveSecondaryConstructors(): Collection<ClassConstructorDescriptor> {
         val classOrObject = declarationProvider.correspondingClassOrObject ?: return emptyList()
 
-        return classOrObject.secondaryConstructors.map { constructor ->
-            val descriptor = c.functionDescriptorResolver.resolveSecondaryConstructorDescriptor(
-                    thisDescriptor.scopeForConstructorHeaderResolution, thisDescriptor, constructor, trace
-            )
-            setDeferredReturnType(descriptor)
-            descriptor
+        if (!thisDescriptor.isProvided) {
+            return classOrObject.secondaryConstructors.map { constructor ->
+                val descriptor = c.functionDescriptorResolver.resolveSecondaryConstructorDescriptor(
+                        thisDescriptor.scopeForConstructorHeaderResolution, thisDescriptor, constructor, trace
+                )
+                setDeferredReturnType(descriptor)
+                descriptor
+            }
         }
+        if (classOrObject.secondaryConstructors.size > 0) throw AssertionError("constructors in provided")
+
+        return arrayListOf(resolveConstructorForProvided())
     }
 
     protected fun setDeferredReturnType(descriptor: ClassConstructorDescriptorImpl) {

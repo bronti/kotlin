@@ -17,5 +17,20 @@
     <orderEntry type="module" module-name="resolution" exported="" />
     <orderEntry type="library" exported="" name="kotlin-script-runtime" level="project" />
     <orderEntry type="library" name="javaslang" level="project" />
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../dependencies/jackson-annotations.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../dependencies/jackson-core.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../dependencies/jackson-databind.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES>
+          <root url="jar://$MODULE_DIR$/../../dependencies/jackson-annotations-sources.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../dependencies/jackson-core-sources.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../dependencies/jackson-databind-sources.jar!/" />
+        </SOURCES>
+      </library>
+    </orderEntry>
   </component>
 </module>

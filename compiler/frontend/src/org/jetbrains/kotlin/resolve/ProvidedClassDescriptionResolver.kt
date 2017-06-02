@@ -16,6 +16,12 @@
 
 package org.jetbrains.kotlin.resolve
 
+import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.BooleanNode
+import com.fasterxml.jackson.databind.node.IntNode
+import com.fasterxml.jackson.databind.node.TextNode
 import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
@@ -30,42 +36,47 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.util.OperatorNameConventions
 
 object ProvidedClassDescriptionResolver {
-    val GET_ONE_METHOD_NAME = Name.identifier("getOne")
-    val VARIABLE_PROPERTY_NAME = Name.identifier("variable")
 
-    fun createGetOneFunctionDescriptor(classDescriptor: ClassDescriptor, trace: BindingTrace): SimpleFunctionDescriptor {
-        val functionDescriptor = SimpleFunctionDescriptorImpl.create(
-                classDescriptor,
-                Annotations.EMPTY,
-                GET_ONE_METHOD_NAME,
-                CallableMemberDescriptor.Kind.SYNTHESIZED,
-                classDescriptor.source
-        )
-        val parameterDescriptors = arrayListOf<ValueParameterDescriptor>()
-        val returnType = classDescriptor.builtIns.getPrimitiveKotlinType(PrimitiveType.INT)
+//    fun createGetOneFunctionDescriptor(classDescriptor: ClassDescriptor, trace: BindingTrace): SimpleFunctionDescriptor {
+//        val functionDescriptor = SimpleFunctionDescriptorImpl.create(
+//                classDescriptor,
+//                Annotations.EMPTY,
+//                GET_ONE_METHOD_NAME,
+//                CallableMemberDescriptor.Kind.SYNTHESIZED,
+//                classDescriptor.source
+//        )
+//        val parameterDescriptors = arrayListOf<ValueParameterDescriptor>()
+//        val returnType = classDescriptor.builtIns.getPrimitiveKotlinType(PrimitiveType.INT)
+//
+//        functionDescriptor.initialize(
+//                null,
+//                classDescriptor.thisAsReceiverParameter,
+//                emptyList<TypeParameterDescriptor>(),
+//                parameterDescriptors,
+//                returnType,
+//                Modality.FINAL,
+//                Visibilities.PUBLIC
+//        )
+//
+//        trace.record(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor, functionDescriptor)
+//        return functionDescriptor
+//    }
 
-        functionDescriptor.initialize(
-                null,
-                classDescriptor.thisAsReceiverParameter,
-                emptyList<TypeParameterDescriptor>(),
-                parameterDescriptors,
-                returnType,
-                Modality.FINAL,
-                Visibilities.PUBLIC
-        )
+    private fun getJsonValueType(value: JsonNode, classDescriptor: ClassDescriptor) = when (value) {
+        is TextNode -> classDescriptor.builtIns.stringType
+        is IntNode -> classDescriptor.builtIns.intType
+        is BooleanNode -> classDescriptor.builtIns.intType
+        else -> throw AssertionError("JsonNode type inside JsonNode in property description generation")
+    }.makeNullableAsSpecified(true) //todo: remove nullable
 
-        trace.record(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor, functionDescriptor)
-        return functionDescriptor
-    }
-
-    fun createVariablePropertyDescriptor(classDescriptor: ClassDescriptor, trace: BindingTrace): PropertyDescriptor {
+    fun createFromJsonPropertyDescriptor(name: Name, value: JsonNode, classDescriptor: ClassDescriptor, trace: BindingTrace): PropertyDescriptor {
         val propertyDescriptor = PropertyDescriptorImpl.create(
                 classDescriptor,
                 Annotations.EMPTY,
                 Modality.FINAL,
                 Visibilities.PUBLIC,
-                /* isVar = */ false,
-                Name.identifier("variable"),
+                /* isVar = */ true,
+                name,
                 CallableMemberDescriptor.Kind.SYNTHESIZED,
                 classDescriptor.source,
                 /* lateInit = */ false, /* isConst = */ false,
@@ -73,7 +84,7 @@ object ProvidedClassDescriptionResolver {
                 /* isExternal = */ false, /* isDelegated = */ false
         )
 
-        val type = classDescriptor.builtIns.intType.makeNullableAsSpecified(true)
+        val type = getJsonValueType(value, classDescriptor)
         val typeParameters = emptyList<TypeParameterDescriptor>()
 
         val dispatchReceiverParameter = classDescriptor.thisAsReceiverParameter
@@ -83,12 +94,12 @@ object ProvidedClassDescriptionResolver {
 
         val getter = DescriptorFactory.createDefaultGetter(propertyDescriptor, Annotations.EMPTY)
         getter.initialize(propertyDescriptor.type)
-//            val setter = DescriptorFactory.createDefaultSetter(propertyDescriptor, Annotations.EMPTY)
-        val setter: PropertySetterDescriptor? = null
+        val setter = DescriptorFactory.createDefaultSetter(propertyDescriptor, Annotations.EMPTY)
+//        val setter: PropertySetterDescriptor? = null
 
         propertyDescriptor.initialize(getter, setter)
 
-        trace.record(BindingContext.PROVIDED_CLASS_VARIABLE_PROPERTY, classDescriptor, propertyDescriptor)
+        trace.record(BindingContext.PROVIDED_FROM_JSON_PROPERTY, Pair(classDescriptor, name), propertyDescriptor)
         return propertyDescriptor
     }
 }

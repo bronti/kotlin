@@ -60,10 +60,7 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ExtensionReceiver;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.types.KotlinType;
-import org.jetbrains.org.objectweb.asm.FieldVisitor;
-import org.jetbrains.org.objectweb.asm.Label;
-import org.jetbrains.org.objectweb.asm.MethodVisitor;
-import org.jetbrains.org.objectweb.asm.Type;
+import org.jetbrains.org.objectweb.asm.*;
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 import org.jetbrains.org.objectweb.asm.commons.Method;
 
@@ -473,6 +470,49 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         new ProvidedClassPropertyAndMethodGeneratorImpl((KtClassOrObject)myClass, bindingContext).generate();
     }
 
+    private void generateProvidedConstructor(@NotNull ClassConstructorDescriptor constructorDescriptor) {
+        if (!descriptor.isProvided()) return;
+        if (!(myClass instanceof KtClassOrObject)) return;
+
+        ConstructorContext constructorContext = context.intoConstructor(constructorDescriptor);
+        //KtSecondaryConstructor constructor = (KtSecondaryConstructor) descriptorToDeclaration(constructorDescriptor);
+
+        functionCodegen.generateMethod(
+            JvmDeclarationOriginKt.Synthetic(null, constructorDescriptor),
+            constructorDescriptor, constructorContext,
+            new FunctionGenerationStrategy.CodegenBased(state) {
+                @Override
+                public void doGenerateBody(@NotNull ExpressionCodegen codegen, @NotNull JvmMethodSignature signature) {
+                    InstructionAdapter iv = codegen.v;
+
+                    //KtSecondaryConstructor constructor =
+                    //        (KtSecondaryConstructor) DescriptorToSourceUtils.descriptorToDeclaration(constructorDescriptor);
+
+                    //markLineNumberForConstructor(constructorDescriptor, constructor, codegen);
+
+                    ResolvedCall<ConstructorDescriptor> constructorDelegationCall = getDelegationConstructorCall(bindingContext, constructorDescriptor);
+                    ConstructorDescriptor delegateConstructor = constructorDelegationCall == null ? null :
+                                                                constructorDelegationCall.getResultingDescriptor();
+
+                    generateDelegatorToConstructorCall(iv, codegen, constructorDescriptor, constructorDelegationCall);
+                    if (!isSameClassConstructor(delegateConstructor)) {
+                        // Initialization happens only for constructors delegating to super
+                        generateClosureInitialization(iv);
+                        generateInitializers(codegen);
+                    }
+
+                    iv.visitInsn(RETURN);
+                }
+            }
+        );
+
+        functionCodegen.generateDefaultIfNeeded(constructorContext, constructorDescriptor, OwnerKind.IMPLEMENTATION, DefaultParameterValueLoader.DEFAULT, null);
+
+        //new DefaultParameterValueSubstitutor(state).generateOverloadsIfNeeded(
+        //        constructor, constructorDescriptor, constructorDescriptor, kind, v, this
+        //);
+    }
+
     private class ProvidedClassPropertyAndMethodGeneratorImpl extends ProvidedClassPropertyAndMethodGenerator {
         ProvidedClassPropertyAndMethodGeneratorImpl(
                 KtClassOrObject klass,
@@ -487,9 +527,17 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
             @NotNull PropertyGetterDescriptor getter = property.getGetter();
 
-            FunctionGenerationStrategy strategy = new GetterStrategyForProvidedProperty(state, getter);
-            JvmDeclarationOrigin origin = JvmDeclarationOriginKt.Synthetic(null, getter);
-            functionCodegen.generateMethod(origin, getter, strategy);
+            FunctionGenerationStrategy getterStrategy = new AccessorStrategyForProvidedProperty(state, getter);
+            JvmDeclarationOrigin getterOrigin = JvmDeclarationOriginKt.Synthetic(null, getter);
+            functionCodegen.generateMethod(getterOrigin, getter, getterStrategy);
+
+            if (!property.isVar()) return;
+
+            @NotNull PropertySetterDescriptor setter = property.getSetter();
+
+            FunctionGenerationStrategy setterStrategy = new AccessorStrategyForProvidedProperty(state, setter);
+            JvmDeclarationOrigin setterOrigin = JvmDeclarationOriginKt.Synthetic(null, setter);
+            functionCodegen.generateMethod(setterOrigin, setter, setterStrategy);
         }
 
         private void generateBackingField(@NotNull PropertyDescriptor property, Name propertyName) {
@@ -533,27 +581,41 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         }
     }
 
-    private static class GetterStrategyForProvidedProperty extends FunctionGenerationStrategy.CodegenBased {
-        private final PropertyAccessorDescriptor propertyGetterDescriptor;
+    private static class AccessorStrategyForProvidedProperty extends FunctionGenerationStrategy.CodegenBased {
+        private final PropertyAccessorDescriptor propertyAccessorDescriptor;
 
-        public GetterStrategyForProvidedProperty(@NotNull GenerationState state, @NotNull PropertyAccessorDescriptor descriptor) {
+        public AccessorStrategyForProvidedProperty(@NotNull GenerationState state, @NotNull PropertyAccessorDescriptor descriptor) {
             super(state);
-            propertyGetterDescriptor = descriptor;
+            propertyAccessorDescriptor = descriptor;
         }
 
         @Override
         public void doGenerateBody(@NotNull ExpressionCodegen codegen, @NotNull JvmMethodSignature signature) {
             InstructionAdapter v = codegen.v;
-            PropertyDescriptor propertyDescriptor = propertyGetterDescriptor.getCorrespondingProperty();
+            PropertyDescriptor propertyDescriptor = propertyAccessorDescriptor.getCorrespondingProperty();
             StackValue property = codegen.intermediateValueForProperty(propertyDescriptor, true, null, StackValue.LOCAL_0);
 
-            if (propertyGetterDescriptor instanceof PropertyGetterDescriptor) {
+            //PsiElement jetProperty = DescriptorToSourceUtils.descriptorToDeclaration(propertyDescriptor);
+            //if (jetProperty instanceof KtProperty || jetProperty instanceof KtParameter) {
+            //    codegen.markLineNumber((KtElement) jetProperty, false);
+            //}
+
+            if (propertyAccessorDescriptor instanceof PropertyGetterDescriptor) {
                 Type type = signature.getReturnType();
                 property.put(type, v);
                 v.areturn(type);
             }
+            else if (propertyAccessorDescriptor instanceof PropertySetterDescriptor) {
+                List<ValueParameterDescriptor> valueParameters = propertyAccessorDescriptor.getValueParameters();
+                assert valueParameters.size() == 1 : "Property setter should have only one value parameter but has " + propertyAccessorDescriptor;
+                int parameterIndex = codegen.lookupLocalIndex(valueParameters.get(0));
+                assert parameterIndex >= 0 : "Local index for setter parameter should be positive or zero: " + propertyAccessorDescriptor;
+                Type type = codegen.typeMapper.mapType(propertyDescriptor);
+                property.store(StackValue.local(parameterIndex, type), codegen.v);
+                v.visitInsn(RETURN);
+            }
             else {
-                throw new IllegalStateException("Unknown property accessor: " + propertyGetterDescriptor);
+                throw new IllegalStateException("Unknown property accessor: " + propertyAccessorDescriptor);
             }
         }
     }
@@ -1008,6 +1070,10 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
     private void generateSecondaryConstructor(@NotNull ClassConstructorDescriptor constructorDescriptor) {
         if (!canHaveDeclaredConstructors(descriptor)) return;
+        if (descriptor.isProvided()) {
+            generateProvidedConstructor(constructorDescriptor);
+            return;
+        }
 
         ConstructorContext constructorContext = context.intoConstructor(constructorDescriptor);
 

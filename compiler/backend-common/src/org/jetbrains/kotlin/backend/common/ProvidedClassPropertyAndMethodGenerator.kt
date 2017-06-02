@@ -16,41 +16,48 @@
 
 package org.jetbrains.kotlin.backend.common
 
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
-import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.BindingContextUtils
 import org.jetbrains.kotlin.resolve.ProvidedClassDescriptionResolver
+import org.jetbrains.kotlin.resolve.lazy.descriptors.LazyClassMemberScope
+
+import com.fasterxml.jackson.databind.JsonNode
 
 
 /**
  * Logic for generatind provided class.
  */
 abstract class ProvidedClassPropertyAndMethodGenerator(private val declaration: KtClassOrObject, private val bindingContext: BindingContext) {
+
     protected val classDescriptor: ClassDescriptor = BindingContextUtils.getNotNull(bindingContext, BindingContext.CLASS, declaration)
 
     fun generate() {
-        doGenerateFunction()
-        doGenerateProperty()
+        doGenerateFromJsonProperties()
     }
 
     protected abstract fun generateFunction(function: FunctionDescriptor)
 
     protected abstract fun generateProperty(property: PropertyDescriptor, name: Name)
 
-    private fun doGenerateFunction() {
-        val function = bindingContext.get(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor) ?: return
-        generateFunction(function)
-    }
+//    private fun doGenerateGetOneFunction() {
+//        val function = bindingContext.get(BindingContext.PROVIDED_CLASS_GET_ONE_FUNCTION, classDescriptor) ?: return
+//        generateFunction(function)
+//    }
 
+    private fun doGenerateFromJsonProperties() {
+        //todo: NOT GUT!
+        val model = (classDescriptor.unsubstitutedMemberScope as LazyClassMemberScope).getJsonNodeForProvided()
 
-    private fun doGenerateProperty() {
-        val property = bindingContext.get(BindingContext.PROVIDED_CLASS_VARIABLE_PROPERTY, classDescriptor) ?: return
-        generateProperty(property, ProvidedClassDescriptionResolver.VARIABLE_PROPERTY_NAME)
+        for (field in model.fields()) {
+            //todo: proper error
+//            if (field.value is JsonNode) continue
+            val property = bindingContext.get(BindingContext.PROVIDED_FROM_JSON_PROPERTY,
+                                              Pair(classDescriptor, Name.identifier(field.key))) ?: return
+            generateProperty(property, property.name)
+        }
     }
 
 }

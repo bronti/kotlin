@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.resolve;
 
 import com.google.common.collect.ImmutableMap;
 import com.intellij.psi.PsiElement;
+import kotlin.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.ReadOnly;
@@ -28,6 +29,7 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.FqNameUnsafe;
+import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemCompleter;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
@@ -253,8 +255,8 @@ public interface BindingContext {
     WritableSlice<ValueParameterDescriptor, FunctionDescriptor> DATA_CLASS_COMPONENT_FUNCTION = Slices.createSimpleSlice();
     WritableSlice<ClassDescriptor, FunctionDescriptor> DATA_CLASS_COPY_FUNCTION = Slices.createSimpleSlice();
 
-    WritableSlice<ClassDescriptor, FunctionDescriptor> PROVIDED_CLASS_GET_ONE_FUNCTION = Slices.createSimpleSlice();
-    WritableSlice<ClassDescriptor, PropertyDescriptor> PROVIDED_CLASS_VARIABLE_PROPERTY = Slices.createSimpleSlice();
+    WritableSlice<ClassDescriptor, VariableDescriptor> PROVIDED_CLASS_JSON_VARIABLE = Slices.createSimpleSlice();
+    WritableSlice<Pair<ClassDescriptor, Name>, PropertyDescriptor> PROVIDED_FROM_JSON_PROPERTY = Slices.createSimpleSlice();
 
     WritableSlice<FqNameUnsafe, ClassDescriptor> FQNAME_TO_CLASS_DESCRIPTOR = new BasicWritableSlice<>(DO_NOTHING, true);
     WritableSlice<KtFile, PackageFragmentDescriptor> FILE_TO_PACKAGE_FRAGMENT = Slices.createSimpleSlice();
